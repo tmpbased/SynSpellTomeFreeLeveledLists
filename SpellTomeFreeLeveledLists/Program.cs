@@ -50,47 +50,79 @@ namespace SpellTomeFreeLeveledLists
                 || skillLevel < minSkillLevel; // skillLevel ∈ [0..minSkillLevel)
         }
 
+        private static bool IsBlackListed(ModKey modKey, IReadOnlySet<ModKey> whiteList, IReadOnlySet<ModKey> blackList)
+        {
+            if (whiteList.Count > 0)
+            {
+                return !whiteList.Contains(modKey);
+            }
+            return blackList.Contains(modKey);
+        }
+
         public static void RunPatch(IPatcherState<ISkyrimMod, ISkyrimModGetter> state)
         {
-            int minSkillLevel = configOptions.Value.MinSpellTomeSkillLevel, maxSkillLevel = configOptions.Value.MaxSpellTomeSkillLevel;
-            if (minSkillLevel == 0 && maxSkillLevel == -1)
+            if (!configOptions.Value.EditLeveledLists && !configOptions.Value.EditFormLists)
             {
                 Console.WriteLine("Turned off.");
                 return;
             }
-            ILinkCache linkCache = state.LoadOrder.ListedOrder.ToImmutableLinkCache();
-            int leveledListCount = 0, leveledListSpellTomeCount = 0, spellTomeCount = 0;
-            foreach (ILeveledItemGetter? getter in state.LoadOrder.PriorityOrder.LeveledItem().WinningOverrides())
+            int minSkillLevel = configOptions.Value.MinSpellTomeSkillLevel, maxSkillLevel = configOptions.Value.MaxSpellTomeSkillLevel;
+            if (minSkillLevel == 0 && maxSkillLevel == -1)
             {
-                leveledListCount++;
-                LeveledItem leveledItem = getter.DeepCopy();
-                int count;
-                if ((count = leveledItem.Entries?.RemoveAll(leveledItemEntry => IsSpellTome(linkCache, leveledItemEntry)) ?? 0) > 0)
+                Console.WriteLine("Turned off. Skill level requirements match no spell tomes.");
+                return;
+            }
+            ILinkCache linkCache = state.LoadOrder.PriorityOrder.ToImmutableLinkCache();
+            int leveledListCount = 0, leveledListSpellTomeCount = 0, spellTomeCount = 0;
+            if (configOptions.Value.EditLeveledLists)
+            {
+                foreach (ILeveledItemGetter? getter in state.LoadOrder.PriorityOrder.LeveledItem().WinningOverrides())
                 {
-                    leveledListSpellTomeCount++;
-                    spellTomeCount += count;
-                    state.PatchMod.LeveledItems.Set(leveledItem);
-                }
-                if (leveledListCount % 100 == 0)
-                {
-                    Console.WriteLine($"Processed {leveledListCount}: Found {leveledListSpellTomeCount} lists to clean, removed spell tomes {spellTomeCount}.");
+                    if (IsBlackListed(getter.FormKey.ModKey, configOptions.Value.LeveledLists.ModWhiteList, configOptions.Value.LeveledLists.ModBlackList))
+                    {
+                        continue;
+                    }
+                    leveledListCount++;
+                    LeveledItem leveledItem = getter.DeepCopy();
+                    int count;
+                    if ((count = leveledItem.Entries?.RemoveAll(leveledItemEntry => IsSpellTome(linkCache, leveledItemEntry)) ?? 0) > 0)
+                    {
+                        leveledListSpellTomeCount++;
+                        spellTomeCount += count;
+                        state.PatchMod.LeveledItems.Set(leveledItem);
+                    }
+                    if (leveledListCount % 100 == 0)
+                    {
+                        Console.WriteLine($"Processed {leveledListCount}: Found {leveledListSpellTomeCount} lists to clean, removed spell tomes {spellTomeCount}.");
+                    }
                 }
             }
-            foreach (IFormListGetter? getter in state.LoadOrder.PriorityOrder.FormList().WinningOverrides())
+            if (configOptions.Value.EditFormLists)
             {
-                leveledListCount++;
-                FormList formList = getter.DeepCopy();
-                int count;
-                if ((count = formList.Items.RemoveAll(formLinkGetter => IsSpellTome(linkCache, formLinkGetter))) > 0)
+                foreach (IFormListGetter? getter in state.LoadOrder.PriorityOrder.FormList().WinningOverrides())
                 {
-                    leveledListSpellTomeCount++;
-                    spellTomeCount += count;
-                    state.PatchMod.FormLists.Set(formList);
+                    if (IsBlackListed(getter.FormKey.ModKey, configOptions.Value.FormLists.ModWhiteList, configOptions.Value.FormLists.ModBlackList))
+                    {
+                        continue;
+                    }
+                    leveledListCount++;
+                    FormList formList = getter.DeepCopy();
+                    int count;
+                    if ((count = formList.Items.RemoveAll(formLinkGetter => IsSpellTome(linkCache, formLinkGetter))) > 0)
+                    {
+                        leveledListSpellTomeCount++;
+                        spellTomeCount += count;
+                        state.PatchMod.FormLists.Set(formList);
+                    }
+                    if (leveledListCount % 100 == 0)
+                    {
+                        Console.WriteLine($"Processed {leveledListCount}: Found {leveledListSpellTomeCount} lists to clean, removed spell tomes {spellTomeCount}.");
+                    }
                 }
-                if (leveledListCount % 100 == 0)
-                {
-                    Console.WriteLine($"Processed {leveledListCount}: Found {leveledListSpellTomeCount} lists to clean, removed spell tomes {spellTomeCount}.");
-                }
+            }
+            if (leveledListCount % 100 != 0)
+            {
+                Console.WriteLine($"Processed {leveledListCount}: Found {leveledListSpellTomeCount} lists to clean, removed spell tomes {spellTomeCount}.");
             }
         }
     }
